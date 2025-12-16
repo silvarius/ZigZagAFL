@@ -1,0 +1,261 @@
+//==============================================================
+// ZigZag "Close only"
+// Port of Python detect_zigzag() V1-18
+// - ASCII comments
+// - No last-branch capture
+// - Single loop implementation
+// - For backtesting, scan, or Explore
+//==============================================================
+
+// User parameters
+seuil_pct = Param("ZigZag threshold (%)", 3.5, 0.5 , 5, 0.25);
+pctProfitLong = Param("Long take profit threshold", 30, 0.5, 30, 0.5);
+pctProfitShort = Param("Short take profit threshold", 1, 0.5, 30, 0.25);
+csvPath   = ParamStr("CSV path","C:\\Users\\admin\\Insync\\atalan.files@gmail.com\\Google Drive atalan\\RESODIA\\Trading\\AFL\\mouvements_zig-zag.csv");
+volatilityPeriod = Param("VolatilityPeriod", 400, 5, 400, 5);
+
+// Need at least 3 bars to detect any movement
+if (BarCount < 3)
+{
+    // Nothing to export
+    _exit();
+}
+
+// Open CSV file
+fh = fopen(csvPath, "w");
+
+if (fh == 0)
+{
+	// The file was not properly opened.
+	_exit();
+}
+
+// Write header line
+fputs("start_idx;end_idx;sens;amplitude_pct;duree\n", fh);
+
+// Convert threshold to factor
+p = seuil_pct / 100.0;
+fProfitLong = pctProfitLong / 100;
+fProfitShort = pctProfitShort / 100;
+
+//Trading range variable initialization
+bir = status("barInRange");
+fbir = status("firstBarInRange");
+indexBarre = barIndex();
+
+//Trading variables initialization
+Buy = Sell = Short = Cover = 0;
+
+// debug variables
+debugPivotIdx = 0;
+debugPivotPrice = 0;
+debugRetracement = 0;
+debugExtremePrice = 0;
+debugDuree = 0;
+
+//--------------------------------------------------------------
+// Main ZigZag loop
+//--------------------------------------------------------------
+
+for (i = 1; i < BarCount; i++)
+{
+	if ( bir[i] ) //We check that we are in the Range
+	{
+		price = Close[i];
+
+		if ( fbir[i] ) //If it's the first bar in range, we prepare variables
+		{
+			firstIndex = indexBarre[i];
+			pivotIdx     = 0;
+			pivotPrice   = price;
+			trend        = 0;    // 0 = unknown, +1 = up, -1 = down
+			extremeIdx   = 0;
+			extremePrice = pivotPrice;
+
+			// debug variables
+			debugPivotPrice = price;
+			debugExtremePrice = pivotPrice;
+    	}
+
+		//----------------------------------------------------------
+		// Initial trend detection
+		//----------------------------------------------------------
+		if (trend == 0)
+		{
+			if (price >= pivotPrice * (1 + p))
+			{
+				trend = 1;
+				extremeIdx = i - firstIndex;
+				extremePrice = price;
+                Buy[i] = 1;
+                takeProfitPrice = price * (1 + fProfitLong);
+				debugExtremePrice[i] = extremePrice;
+			}
+			else
+			if (price <= pivotPrice * (1 - p))
+			{
+				trend = -1;
+				extremeIdx = i - firstIndex;
+				extremePrice = price;
+                Short[i] = 1;
+                takeProfitPrice = price * (1 - fProfitShort);
+				debugExtremePrice[i] = extremePrice;
+			}
+			continue;
+		}
+
+		//----------------------------------------------------------
+		// Update extreme price and index
+		//----------------------------------------------------------
+		if (trend == 1 && price > extremePrice)
+		{
+			extremeIdx = i - firstIndex;
+			extremePrice = price;
+			debugExtremePrice[i] = extremePrice;
+		}
+		else
+		if (trend == -1 && price < extremePrice)
+		{
+			extremeIdx = i - firstIndex;
+			extremePrice = price;
+			debugExtremePrice[i] = extremePrice;
+		}
+
+		//----------------------------------------------------------
+		// UP trend
+		//----------------------------------------------------------
+
+        if (trend == 1)
+		{
+			// Check if take profit is hit
+            if (price >= takeProfitPrice)
+            {
+                Sell[i] = 1;
+            }
+            
+            // Check retracement to validate the branch
+            retr = (extremePrice - price) / extremePrice * 100.0;
+			debugRetracement[i] = retr;
+
+			if (retr >= seuil_pct)
+			{
+				amplitude_pct = (extremePrice / pivotPrice - 1.0) * 100.0;
+				duree         = extremeIdx - pivotIdx;
+
+                // Close the present trade?
+                if (extremePrice < takeProfitPrice)
+                {
+                    Sell[i] = 1;
+                }
+				              
+                // Write movement
+				line =
+					NumToStr(pivotIdx, 1.0) + ";" +
+					NumToStr(extremeIdx, 1.0) + ";" +
+					"up;" +
+					NumToStr(amplitude_pct, 1.4) + ";" +
+					NumToStr(duree, 1.0) + "\n";
+
+				fputs(line, fh);
+
+				// Update debug variable
+				debugPivotPrice[i] = price;
+				debugPivotIdx[i] = pivotIdx;
+				debugDuree[i] = duree;
+				debugExtremePrice[i] = price;
+
+
+				// New pivot becomes former extreme
+				pivotIdx   = extremeIdx;
+				pivotPrice = extremePrice;
+
+				// Switch trend
+				trend        = -1;
+				extremeIdx   = i - firstIndex;
+				extremePrice = price;
+
+                // Open new trade
+                Short[i] = 1;
+                takeProfitPrice = price * (1 - fProfitShort);
+			}
+		}
+		//----------------------------------------------------------
+		// DOWN trend: check rebound to validate the branch
+		//----------------------------------------------------------
+		else
+		{
+            // Check if take profit is hit
+            if (Price <= takeProfitPrice) //
+            {
+                Cover[i] = 1;
+            }
+            
+            // Check retracement to validate the branch
+			reb = (price - extremePrice) / extremePrice * 100.0;
+			debugRetracement[i] = reb;
+
+
+			if (reb >= seuil_pct)
+			{
+				amplitude_pct = (1.0 - (extremePrice / pivotPrice)) * 100.0;
+				duree         = extremeIdx - pivotIdx;
+
+            // Close the present trade?
+            if (extremePrice > takeProfitPrice)
+            {
+                Cover[i] = 1;
+            }
+
+				// Write movement
+				line =
+					NumToStr(pivotIdx, 1.0) + ";" +
+					NumToStr(extremeIdx, 1.0) + ";" +
+					"down;" +
+					NumToStr(amplitude_pct, 1.4) + ";" +
+					NumToStr(duree, 1.0) + "\n";
+
+				fputs(line, fh);
+
+				//Update debug variable
+				debugPivotPrice[i] = price;
+				debugPivotIdx[i] = pivotIdx;
+				debugDuree[i] = duree;
+				debugExtremePrice[i] = price;
+
+				// New pivot becomes former extreme
+				pivotIdx   = extremeIdx;
+				pivotPrice = extremePrice;
+
+				// Switch trend
+				trend        = 1;
+				extremeIdx   = i;
+				extremePrice = price;
+
+                // Open new trade
+                Buy[i] = 1;
+                takeProfitPrice = price * (1 + fProfitLong);
+			}
+		}
+	}
+}
+
+// Close file
+fclose(fh);
+
+// Explore columns display
+Filter = Buy == 1 OR Short == 1;
+
+AddColumn(O, "O");
+AddColumn(H, "H");
+AddColumn(L, "L");
+AddColumn(C, "C");
+AddColumn(Buy, "Buy");
+AddColumn(Sell,"Sell");
+AddColumn(Short, "Short");
+AddColumn(Cover, "Cover");
+AddColumn(debugPivotIdx, "DebugPivotIdx");
+AddColumn(debugPivotPrice, "DebugPivotPrice");
+AddColumn(debugRetracement, "DebugRetracement");
+AddColumn(debugExtremePrice, "DebugExtremePrice");
+AddColumn(debugDuree, "DebugDuree");
+
