@@ -46,11 +46,6 @@ indexBarre = barIndex();
 //Trading variables initialization
 Buy = Sell = Short = Cover = 0;
 
-// Volatility initalization
-averageVolatility = MA(H - L, volatilityPeriod);
-volatilityRatio = (H - L) / averageVolatility;
-
-
 // debug variables
 debugPivotIdx = 0;
 debugPivotPrice = 0;
@@ -133,7 +128,7 @@ for (i = 1; i < BarCount; i++)
         if (trend == 1)
 		{
 			// Check if take profit is hit
-            if (price >= takeProfitPrice * volatilityRatio)
+            if (price >= takeProfitPrice)
             {
                 Sell[i] = 1;
             }
@@ -190,7 +185,7 @@ for (i = 1; i < BarCount; i++)
 		else
 		{
             // Check if take profit is hit
-            if (Price <= takeProfitPrice * volatilityRatio)
+            if (Price <= takeProfitPrice) //
             {
                 Cover[i] = 1;
             }
@@ -258,7 +253,6 @@ AddColumn(Buy, "Buy");
 AddColumn(Sell,"Sell");
 AddColumn(Short, "Short");
 AddColumn(Cover, "Cover");
-AddColumn(volatilityRatio, "volatilityRatio");
 AddColumn(debugPivotIdx, "DebugPivotIdx");
 AddColumn(debugPivotPrice, "DebugPivotPrice");
 AddColumn(debugRetracement, "DebugRetracement");
