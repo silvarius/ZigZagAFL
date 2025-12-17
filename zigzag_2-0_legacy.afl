@@ -9,9 +9,10 @@
 
 // User parameters
 seuil_pct = Param("ZigZag threshold (%)", 3.5, 0.5 , 5, 0.25);
-pctProfitLong = Optimize("Long take profit threshold", 5, 0.5, 30, 0.5);
-pctProfitShort = Param("Short take profit threshold", 10, 0.25, 50, 0.25);
+pctProfitLong = Param("Long take profit threshold", 30, 0.5, 30, 0.5);
+pctProfitShort = Param("Short take profit threshold", 1, 0.5, 30, 0.25);
 csvPath   = ParamStr("CSV path","C:\\Users\\admin\\Insync\\atalan.files@gmail.com\\Google Drive atalan\\RESODIA\\Trading\\AFL\\mouvements_zig-zag.csv");
+volatilityPeriod = Param("VolatilityPeriod", 400, 5, 400, 5);
 
 // Need at least 3 bars to detect any movement
 if (BarCount < 3)
@@ -175,7 +176,7 @@ for (i = 1; i < BarCount; i++)
 
                 // Open new trade
                 Short[i] = 1;
-                takeProfitPrice = price * (1 + fProfitShort);
+                takeProfitPrice = price * (1 - fProfitShort);
 			}
 		}
 		//----------------------------------------------------------
@@ -184,7 +185,7 @@ for (i = 1; i < BarCount; i++)
 		else
 		{
             // Check if take profit is hit
-            if (Price <= takeProfitPrice)
+            if (Price <= takeProfitPrice) //
             {
                 Cover[i] = 1;
             }
