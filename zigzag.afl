@@ -12,7 +12,8 @@ seuil_pct = Param("ZigZag threshold (%)", 3.5, 0.5 , 5, 0.25);
 pctProfitLong = Param("Long take profit threshold", 30, 0.5, 30, 0.5);
 pctProfitShort = Param("Short take profit threshold", 1, 0.5, 30, 0.25);
 csvPath   = ParamStr("CSV path","C:\\Users\\admin\\Insync\\atalan.files@gmail.com\\Google Drive atalan\\RESODIA\\Trading\\AFL\\mouvements_zig-zag.csv");
-volatilityPeriod = Param("VolatilityPeriod", 400, 5, 400, 5);
+volatilityPeriodLt = Param("VolatilityPeriodLt", 400, 5, 400, 5);
+volatilityPeriodSt = optimize("VolatilityPeriodSt", 10, 1, 20, 5);
 volLong = Param("VolLong", 0, 0, 1, 1);
 volShort = Param("VolShort", 1, 0, 1, 1);
 
@@ -50,10 +51,13 @@ Buy = Sell = Short = Cover = 0;
 
 // Volatility initalization
 volExist = IIf(abs(H-L) == 0, 0, 1);
-volBars = Sum(volExist, volatilityPeriod);
-volSum = Sum(abs(H-L), volatilityPeriod);
-VolAverage = volsum / volBars;
-volRatio = abs(H - L) / volAverage;
+volBarsLt = Sum(volExist, volatilityPeriodLt);
+volBarsSt = Sum(volExist, volatilityPeriodSt);
+volSumLt = Sum(abs(H-L), volatilityPeriodLt);
+volSumSt = Sum(abs(H-L), volatilityPeriodSt);
+volAverageLt = volsumLt / volBarsLt;
+volAverageSt = volsumSt / volBarsSt;
+volRatio = volAverageSt / volAverageLT;
 
 
 // debug variables
@@ -137,12 +141,13 @@ for (i = 1; i < BarCount; i++)
 
         if (trend == 1)
 		{
-			// Check if take profit is hit
+			// If decided, we take into account volatility for profit taking
 			if (volLong[i] == 1)
 			{
-				takeProfitPrice *= volRatio[i]; // If decided, we take into account volatility
+				takeProfitPrice *= volRatio[i];
 			}
 			
+			// Check if take profit is hit
             if (price >= takeProfitPrice)
             {
                 Sell[i] = 1;
@@ -199,14 +204,14 @@ for (i = 1; i < BarCount; i++)
 		//----------------------------------------------------------
 		else
 		{
-            // Check if take profit is hit
-            			// Check if take profit is hit
+            // If decided, we take into account volatility for profit taking		
 			if (volShort[i] == 1)
 			{
-				takeProfitPrice *= volRatio[i]; // If decided, we take into account volatility
+				takeProfitPrice *= volRatio[i];
 			}
 			
-            if (Price <= takeProfitPrice * volRatio[i])
+			// Check if take profit is hit
+            if (Price <= takeProfitPrice	)
             {
                 Cover[i] = 1;
             }
@@ -277,7 +282,8 @@ AddColumn(Short, "Short");
 AddColumn(Cover, "Cover");
 AddColumn(abs(H-L), "abs(h-l)");
 AddColumn(volExist, "volExist");
-AddColumn(volAverage, "volAverage");
+AddColumn(volAverageLt, "volAverageLt");
+AddColumn(volAverageSt, "volAverageSt");
 AddColumn(volRatio, "volRatio");
 AddColumn(debugPivotIdx, "DebugPivotIdx");
 AddColumn(debugPivotPrice, "DebugPivotPrice");
