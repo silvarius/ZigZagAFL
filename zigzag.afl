@@ -5,17 +5,63 @@
 // - No last-branch capture
 // - Single loop implementation
 // - For backtesting, scan, or Explore
+// - Addition of volatility and trend filters
 //==============================================================
 
-// User parameters
+// General user parameters
 seuil_pct = Param("ZigZag threshold (%)", 3.5, 0.5 , 5, 0.25);
 pctProfitLong = Param("Long take profit threshold", 30, 0.5, 30, 0.5);
 pctProfitShort = Param("Short take profit threshold", 1, 0.5, 30, 0.25);
 csvPath   = ParamStr("CSV path","C:\\Users\\admin\\Insync\\atalan.files@gmail.com\\Google Drive atalan\\RESODIA\\Trading\\AFL\\mouvements_zig-zag.csv");
+useExport = ParamList("UseExport", "Yes, No", 1);
+useDebug = ParamList("useDebug", "Yes, No", 1);
+
+// Volatility filter user parameters
 volatilityPeriodLt = Param("VolatilityPeriodLt", 400, 5, 400, 5);
-volatilityPeriodSt = optimize("VolatilityPeriodSt", 10, 1, 20, 5);
-volLong = Param("VolLong", 0, 0, 1, 1);
-volShort = Param("VolShort", 1, 0, 1, 1);
+volatilityPeriodSt = Param("VolatilityPeriodSt", 10, 1, 20, 5);
+volLong= Param("VolLong", 0, 0, 1, 1);
+volShort = Param("VolShort", 0, 0, 1, 1);
+
+// Trend filter user parameters
+useTrend = ParamList("useTrend", "Yes|No");
+
+emaDayPeriod = Param("EmaDayPeriod", 20, 3, 50, 1);
+CoefEmaDay2 = Param("CoefEmaDay2", 1, 1, 10, 1);
+penteEmaDayV = Param("penteEmaDay", -0.5, -2, 2, 0.1);
+
+// -------------------------------------------------------------
+// Trend filter
+// -------------------------------------------------------------
+
+// Trend daily timeframe variables
+TimeFrameSet(inDaily);
+EmaDay1 = MA(C, emaDayPeriod);
+EmaDay2 = Ref(EmaDay1, (-1) * coefEmaDay2);
+TimeFrameRestore();
+EmaDay1 = TimeFrameExpand(EmaDay1, inDaily);
+EmaDay2 = TimeFrameExpand(EmaDay2, inDaily);
+penteEmaDay = (emaDay1 - emaDay2) / emaDay1 * 100;
+
+// We calculate the trend filter
+mainTrend = IIf(penteEmaDay > penteEmaDayV, 1, -1);
+
+// -------------------------------------------------------------
+// Volatility filter
+// -------------------------------------------------------------
+
+// Volatility variables
+volExist = IIf(abs(H-L) == 0, 0, 1);
+volBarsLt = Sum(volExist, volatilityPeriodLt);
+volBarsSt = Sum(volExist, volatilityPeriodSt);
+volSumLt = Sum(abs(H-L), volatilityPeriodLt);
+volSumSt = Sum(abs(H-L), volatilityPeriodSt);
+volAverageLt = volsumLt / volBarsLt;
+volAverageSt = volsumSt / volBarsSt;
+
+volDif = volAverageSt - volAverageLt;
+// -------------------------------------------------------------
+// Preparation
+// -------------------------------------------------------------
 
 // Need at least 3 bars to detect any movement
 if (BarCount < 3)
@@ -24,17 +70,20 @@ if (BarCount < 3)
     _exit();
 }
 
-// Open CSV file
-fh = fopen(csvPath, "w");
-
-if (fh == 0)
+// Open CSV file if decided
+if (useExport == "Yes")
 {
-	// The file was not properly opened.
-	_exit();
-}
+	fh = fopen(csvPath, "w");
+
+	if (fh == 0)
+	{
+		// The file was not properly opened.
+		_exit();
+	}
 
 // Write header line
 fputs("start_idx;end_idx;sens;amplitude_pct;duree\n", fh);
+}
 
 // Convert threshold to factor
 p = seuil_pct / 100.0;
@@ -49,23 +98,15 @@ indexBarre = barIndex();
 //Trading variables initialization
 Buy = Sell = Short = Cover = 0;
 
-// Volatility initalization
-volExist = IIf(abs(H-L) == 0, 0, 1);
-volBarsLt = Sum(volExist, volatilityPeriodLt);
-volBarsSt = Sum(volExist, volatilityPeriodSt);
-volSumLt = Sum(abs(H-L), volatilityPeriodLt);
-volSumSt = Sum(abs(H-L), volatilityPeriodSt);
-volAverageLt = volsumLt / volBarsLt;
-volAverageSt = volsumSt / volBarsSt;
-volRatio = volAverageSt / volAverageLT;
-
-
-// debug variables
-debugPivotIdx = 0;
-debugPivotPrice = 0;
-debugRetracement = 0;
-debugExtremePrice = 0;
-debugDuree = 0;
+// debug variables id decided
+if (useDebug == "Yes")
+{
+	debugPivotIdx = 0;
+	debugPivotPrice = 0;
+	debugRetracement = 0;
+	debugExtremePrice = 0;
+	debugDuree = 0;
+}
 
 //--------------------------------------------------------------
 // Main ZigZag loop
@@ -85,10 +126,14 @@ for (i = 1; i < BarCount; i++)
 			trend        = 0;    // 0 = unknown, +1 = up, -1 = down
 			extremeIdx   = 0;
 			extremePrice = pivotPrice;
+			inPosition = 0;
 
-			// debug variables
-			debugPivotPrice = price;
-			debugExtremePrice = pivotPrice;
+			// debug variables if decided
+			if (useDebug == "Yes")
+			{
+				debugPivotPrice = price;
+				debugExtremePrice = pivotPrice;
+			}
     	}
 
 		//----------------------------------------------------------
@@ -101,9 +146,17 @@ for (i = 1; i < BarCount; i++)
 				trend = 1;
 				extremeIdx = i - firstIndex;
 				extremePrice = price;
-                Buy[i] = 1;
-                takeProfitPrice = price * (1 + fProfitLong);
-				debugExtremePrice[i] = extremePrice;
+                if (useTrend == "No" OR (useTrend == "Yes" AND mainTrend[i] == 1))
+                {
+					Buy[i] = 1;
+					inPosition = 1;
+                }
+                takeProfitPrice = price * (1 + fProfitLong) + volDif[i] * volLong;
+				
+				if (useDebug == "Yes")
+				{
+					debugExtremePrice[i] = extremePrice;
+				}
 			}
 			else
 			if (price <= pivotPrice * (1 - p))
@@ -111,9 +164,18 @@ for (i = 1; i < BarCount; i++)
 				trend = -1;
 				extremeIdx = i - firstIndex;
 				extremePrice = price;
-                Short[i] = 1;
-                takeProfitPrice = price * (1 - fProfitShort);
-				debugExtremePrice[i] = extremePrice;
+				if (useTrend == "No" OR (useTrend == "Yes" AND mainTrend[i] == -1))
+				{
+					Short[i] = 1;
+					inPosition = 1;
+                }
+
+                takeProfitPrice = price * (1 - fProfitShort) - volDif[i] * volShort;
+                
+                if (useDebug == "Yes")
+                {
+					debugExtremePrice[i] = extremePrice;
+				}
 			}
 			continue;
 		}
@@ -125,14 +187,22 @@ for (i = 1; i < BarCount; i++)
 		{
 			extremeIdx = i - firstIndex;
 			extremePrice = price;
-			debugExtremePrice[i] = extremePrice;
+			
+			if (useDebug == "Yes")
+			{
+				debugExtremePrice[i] = extremePrice;
+			}
 		}
 		else
 		if (trend == -1 && price < extremePrice)
 		{
 			extremeIdx = i - firstIndex;
 			extremePrice = price;
-			debugExtremePrice[i] = extremePrice;
+			
+			if (useDebug == "Yes")
+			{
+				debugExtremePrice[i] = extremePrice;
+			}
 		}
 
 		//----------------------------------------------------------
@@ -142,48 +212,56 @@ for (i = 1; i < BarCount; i++)
         if (trend == 1)
 		{
 			// If decided, we take into account volatility for profit taking
-			if (volLong[i] == 1)
-			{
-				takeProfitPrice *= volRatio[i];
-			}
+				takeProfitPrice = takeProfitPrice;
 			
 			// Check if take profit is hit
-            if (price >= takeProfitPrice)
+            if (price >= takeProfitPrice AND inPosition == 1)
             {
                 Sell[i] = 1;
+                inPosition = 0;
             }
             
             // Check retracement to validate the branch
             retr = (extremePrice - price) / extremePrice * 100.0;
-			debugRetracement[i] = retr;
-
+			
+			if (useDebug == "Yes")
+			{
+				debugRetracement[i] = retr;
+			}
+			
 			if (retr >= seuil_pct)
 			{
 				amplitude_pct = (extremePrice / pivotPrice - 1.0) * 100.0;
 				duree         = extremeIdx - pivotIdx;
 
                 // Close the present trade?
-                if (extremePrice < takeProfitPrice)
+                if (extremePrice < takeProfitPrice AND inPosition == 1)
                 {
                     Sell[i] = 1;
+                    inPosition = 0;
                 }
 				              
-                // Write movement
-				line =
-					NumToStr(pivotIdx, 1.0) + ";" +
-					NumToStr(extremeIdx, 1.0) + ";" +
-					"up;" +
-					NumToStr(amplitude_pct, 1.4) + ";" +
-					NumToStr(duree, 1.0) + "\n";
+                // Write movement id decided
+                if (useExport == "Yes")
+                {
+					line =
+						NumToStr(pivotIdx, 1.0) + ";" +
+						NumToStr(extremeIdx, 1.0) + ";" +
+						"up;" +
+						NumToStr(amplitude_pct, 1.4) + ";" +
+						NumToStr(duree, 1.0) + "\n";
 
-				fputs(line, fh);
-
-				// Update debug variable
-				debugPivotPrice[i] = price;
-				debugPivotIdx[i] = pivotIdx;
-				debugDuree[i] = duree;
-				debugExtremePrice[i] = price;
-
+					fputs(line, fh);
+				}
+				
+				// Update debug variable if decided
+				if (useDebug == "Yes")
+				{
+					debugPivotPrice[i] = price;
+					debugPivotIdx[i] = pivotIdx;
+					debugDuree[i] = duree;
+					debugExtremePrice[i] = price;
+				}
 
 				// New pivot becomes former extreme
 				pivotIdx   = extremeIdx;
@@ -195,8 +273,12 @@ for (i = 1; i < BarCount; i++)
 				extremePrice = price;
 
                 // Open new trade
-                Short[i] = 1;
-                takeProfitPrice = price * (1 - fProfitShort);
+                if (useTrend == "No" OR (useTrend == "Yes" AND mainTrend[i] == -1))
+                {
+					Short[i] = 1;
+					inPosition = 1;
+					takeProfitPrice = price * (1 - fProfitShort) - volDif[i] * volShort;
+				}
 			}
 		}
 		//----------------------------------------------------------
@@ -205,71 +287,87 @@ for (i = 1; i < BarCount; i++)
 		else
 		{
             // If decided, we take into account volatility for profit taking		
-			if (volShort[i] == 1)
-			{
-				takeProfitPrice *= volRatio[i];
-			}
+				takeProfitPrice = takeProfitPrice;
 			
 			// Check if take profit is hit
-            if (Price <= takeProfitPrice	)
+            if (Price <= takeProfitPrice AND inPosition == 1)
             {
                 Cover[i] = 1;
+                inPosition = 0;
             }
             
             // Check retracement to validate the branch
 			reb = (price - extremePrice) / extremePrice * 100.0;
-			debugRetracement[i] = reb;
-
+			
+			if (useDebug == "Yes")
+			{
+				debugRetracement[i] = reb;
+			}
 
 			if (reb >= seuil_pct)
 			{
 				amplitude_pct = (1.0 - (extremePrice / pivotPrice)) * 100.0;
 				duree         = extremeIdx - pivotIdx;
+				
+				// Close the present trade?
+				if (extremePrice > takeProfitPrice AND inPosition == 1)
+				{
+					Cover[i] = 1;
+					inPosition = 0;
+				}
 
-            // Close the present trade?
-            if (extremePrice > takeProfitPrice)
-            {
-                Cover[i] = 1;
-            }
+				// Write movement id decided
+				if (useExport == "Yes")
+				{
+					line =
+						NumToStr(pivotIdx, 1.0) + ";" +
+						NumToStr(extremeIdx, 1.0) + ";" +
+						"down;" +
+						NumToStr(amplitude_pct, 1.4) + ";" +
+						NumToStr(duree, 1.0) + "\n";
 
-				// Write movement
-				line =
-					NumToStr(pivotIdx, 1.0) + ";" +
-					NumToStr(extremeIdx, 1.0) + ";" +
-					"down;" +
-					NumToStr(amplitude_pct, 1.4) + ";" +
-					NumToStr(duree, 1.0) + "\n";
-
-				fputs(line, fh);
-
-				//Update debug variable
-				debugPivotPrice[i] = price;
-				debugPivotIdx[i] = pivotIdx;
-				debugDuree[i] = duree;
-				debugExtremePrice[i] = price;
-
+					fputs(line, fh);
+				}
+				
+				//Update debug variable if decided
+				if (useDebug == "Yes")
+				{
+					debugPivotPrice[i] = price;
+					debugPivotIdx[i] = pivotIdx;
+					debugDuree[i] = duree;
+					debugExtremePrice[i] = price;
+				}
+				
 				// New pivot becomes former extreme
 				pivotIdx   = extremeIdx;
 				pivotPrice = extremePrice;
 
 				// Switch trend
 				trend        = 1;
-				extremeIdx   = i;
+				extremeIdx   = i - firstIndex;
 				extremePrice = price;
 
                 // Open new trade
-                Buy[i] = 1;
-                takeProfitPrice = price * (1 + fProfitLong);
+                if (useTrend == "No" OR (useTrend == "Yes" AND mainTrend[i] == 1))
+                {
+					Buy[i] = 1;
+					inPosition = 1;
+					takeProfitPrice = price * (1 + fProfitLong) + volDif[i] * volShort;
+				}
 			}
 		}
 	}
 }
 
-// Close file
-fclose(fh);
+
+// Close file if decided
+if (useExport == "Yes")
+{
+	fclose(fh);
+}
 
 // Explore columns display
-// Filter = 1;
+//Filter = 1;
 filter = Buy == 1 OR Short == 1 OR Sell == 1 OR Cover == 1;
 
 AddColumn(O, "O");
@@ -284,10 +382,14 @@ AddColumn(abs(H-L), "abs(h-l)");
 AddColumn(volExist, "volExist");
 AddColumn(volAverageLt, "volAverageLt");
 AddColumn(volAverageSt, "volAverageSt");
-AddColumn(volRatio, "volRatio");
 AddColumn(debugPivotIdx, "DebugPivotIdx");
-AddColumn(debugPivotPrice, "DebugPivotPrice");
-AddColumn(debugRetracement, "DebugRetracement");
-AddColumn(debugExtremePrice, "DebugExtremePrice");
-AddColumn(debugDuree, "DebugDuree");
-
+AddColumn(penteEmaDay, "penteEmaDay");
+AddColumn(mainTrend, "mainTrend");
+// Display debug variables if decided
+if (useDebug == "Yes")
+{
+	AddColumn(debugPivotPrice, "DebugPivotPrice");
+	AddColumn(debugRetracement, "DebugRetracement");
+	AddColumn(debugExtremePrice, "DebugExtremePrice");
+	AddColumn(debugDuree, "DebugDuree");
+}
