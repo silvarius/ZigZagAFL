@@ -143,30 +143,8 @@ for (i = 0; i < BarCount; i++)
 		//----------------------------------------------------------
 
         if (trend == 1)
-		{
-			// We open a long position if the conditions are met
-			if (inPosition == 0)
-				if (!usePullback
-					AND (useTrend == "No" OR mainTrend[i] == 1))
-                {
-					Buy[i] = 1;
-					inPosition = 1;
-					takeProfitPrice = price * (1 + fProfitLong);
-				}
-				if (usePullback
-					AND (useTrend == "No" OR mainTrend[i] == 1))
-				{
-					// Here we will put the pullback entry code
-				}
-
-			// If the take profit is hit, we close the position
-            if (price >= takeProfitPrice AND inPosition == 1)
-            {
-                Sell[i] = 1;
-                inPosition = 0;
-            }
-            
-            // Check retracement to validate the branch
+		{         
+            // Check retracement to validate a potential new branch
             retr = (extremePrice - price) / extremePrice * 100.0;
 			debugRetracement[i] = retr;
 
@@ -198,47 +176,50 @@ for (i = 0; i < BarCount; i++)
 				extremeIdx   = i - firstIndex;
 				extremePrice = price;
 
+				// If a new branch has been validated, we moved directly to the next candle
+				continue;
 			}
+
+			// We open a long position if the conditions are met
+			if (inPosition == 0)
+			{	
+				if (!usePullback
+						AND (useTrend == "No" OR mainTrend[i] == 1))
+					{
+						Buy[i] = 1;
+						inPosition = 1;
+						takeProfitPrice = price * (1 + fProfitLong);
+					}
+					if (usePullback
+						AND (useTrend == "No" OR mainTrend[i] == 1))
+					{
+						// Here we will put the pullback entry code
+					}
+			}
+
+			// If the take profit is hit, we close the position
+            if (price >= takeProfitPrice AND inPosition == 1)
+            {
+                Sell[i] = 1;
+                inPosition = 0;
+            }
 		}
 		//----------------------------------------------------------
 		// DOWN trend: check rebound to validate the branch
 		//----------------------------------------------------------
 		else
 		{
- 			// We open a short position if the conditions are met
-			if (inPosition == 0)
-				if (!usePullback
-					AND (useTrend == "No" OR mainTrend[i] == -1))
-                {
-					Short[i] = 1;
-					inPosition = 1;
-					takeProfitPrice = price * (1 - fProfitShort);
-				}
-				if (usePullback
-					AND (useTrend == "No" OR mainTrend[i] == -1))
-				{
-					// Here we will put the pullback entry code
-				}
-
-			// Check if take profit is hit
-            if (Price <= takeProfitPrice AND inPosition == 1)
-            {
-                Cover[i] = 1;
-                inPosition = 0;
-            }
             
-            // Check retracement to validate the branch
+            // Check retracement to validate a potential new branch
 			reb = (price - extremePrice) / extremePrice * 100.0;
 			debugRetracement[i] = reb;
-
 
 			if (reb >= seuil_pct)
 			{
 				amplitude_pct = (1.0 - (extremePrice / pivotPrice)) * 100.0;
 				duree         = extremeIdx - pivotIdx;
 
-				
-				// Close the present trade?
+				// If we are still in position, we close it
 				if (extremePrice > takeProfitPrice AND inPosition == 1)
 				{
 					Cover[i] = 1;
@@ -260,11 +241,36 @@ for (i = 0; i < BarCount; i++)
 				extremeIdx   = i - firstIndex;
 				extremePrice = price;
 
+				// If a new branch has been validated, we moved directly to the next candle
+				continue;
 			}
+
+			// We open a short position if the conditions are met
+			if (inPosition == 0)
+			{
+				if (!usePullback
+					AND (useTrend == "No" OR mainTrend[i] == -1))
+                {
+					Short[i] = 1;
+					inPosition = 1;
+					takeProfitPrice = price * (1 - fProfitShort);
+				}
+				if (usePullback
+					AND (useTrend == "No" OR mainTrend[i] == -1))
+				{
+					// Here we will put the pullback entry code
+				}
+			}
+			
+			// Check if take profit is hit
+            if (Price <= takeProfitPrice AND inPosition == 1)
+            {
+                Cover[i] = 1;
+                inPosition = 0;
+            }
 		}
 	}
 }
-
 
 // Explore columns display
 //Filter = 1;
