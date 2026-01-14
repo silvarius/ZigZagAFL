@@ -10,27 +10,37 @@
 //==============================================================
 
 // General user parameters
-seuil_pct = param("ZigZag threshold (%)", 3.5, 0.5 , 5, 0.25);
+seuil_pct = optimize("ZigZag threshold (%)", 3.5, 0.5 , 5, 0.25);
 pctProfitLong = Param("Long take profit threshold", 30, 0.5, 30, 0.5);
-pctProfitShort = param("Short take profit threshold", 20, 0.5, 30, 0.25);
+pctProfitShort = Optimize("Short take profit threshold", 1, 0.5, 30, 0.25);
+csvPath   = ParamStr("CSV path","C:\\Users\\admin\\Insync\\atalan.files@gmail.com\\Google Drive atalan\\RESODIA\\Trading\\AFL\\mouvements_zig-zag.csv");
 
-// Pullback entry parameters
-usePullback = ParamToggle("usePullback", "No|Yes");
-//
 
 // Volatility filter user parameters
 
 volatilityPeriodLt = Param("VolatilityPeriodLt", 400, 5, 400, 5);
+
 volatilityPeriodSt = Param("VolatilityPeriodSt", 10, 1, 20, 5);
+
 volLong = Param("VolLong", 0, 0, 1, 1);
+
 volShort = Param("VolShort", 1, 0, 1, 1);
+
+
 
 // Trend filter user parameters
 
 useTrend = ParamList("useTrend", "Yes|No", 1);
+
+
+
 emaDayPeriod = Param("EmaDayPeriod", 20, 3, 50, 1);
+
 CoefEmaDay2 = Param("CoefEmaDay2", 1, 1, 10, 1);
+
 penteEmaDayV = Param("penteEmaDay", -0.5, -2, 2, 0.1);
+
+
 
 // -------------------------------------------------------------
 
@@ -38,25 +48,39 @@ penteEmaDayV = Param("penteEmaDay", -0.5, -2, 2, 0.1);
 
 // -------------------------------------------------------------
 
+
+
 // Trend daily timeframe variables
 
 TimeFrameSet(inDaily);
+
 EmaDay1 = MA(C, emaDayPeriod);
+
 EmaDay2 = Ref(EmaDay1, (-1) * coefEmaDay2);
+
 TimeFrameRestore();
+
 EmaDay1 = TimeFrameExpand(EmaDay1, inDaily);
+
 EmaDay2 = TimeFrameExpand(EmaDay2, inDaily);
+
 penteEmaDay = (emaDay1 - emaDay2) / emaDay1 * 100;
+
+
 
 // We calculate the trend filter
 
 mainTrend = IIf(penteEmaDay > penteEmaDayV, 1, -1);
+
+
 
 // -------------------------------------------------------------
 
 // Volatility filter
 
 // -------------------------------------------------------------
+
+
 
 // Volatility variables
 
@@ -72,6 +96,8 @@ volAverageSt = volsumSt / volBarsSt;
 volRatio = volAverageSt / volAverageLT;
 volDif = volAverageSt - volAverageLt;
 
+
+
 // -------------------------------------------------------------
 
 // Preparation
@@ -84,6 +110,18 @@ if (BarCount < 3)
     // Nothing to export
     _exit();
 }
+
+// Open CSV file
+fh = fopen(csvPath, "w");
+
+if (fh == 0)
+{
+	// The file was not properly opened.
+	_exit();
+}
+
+// Write header line
+fputs("start_idx;end_idx;sens;amplitude_pct;duree\n", fh);
 
 // Convert threshold to factor
 p = seuil_pct / 100.0;
@@ -193,6 +231,7 @@ for (i = 0; i < BarCount; i++)
 			// If decided, we take into account volatility for profit taking
 
 			if (volLong[i] == 1)
+
 			{
 				takeProfitPrice *= volRatio[i];
 			}
@@ -215,10 +254,21 @@ for (i = 0; i < BarCount; i++)
 
                 // Close the present trade?
                 if (extremePrice < takeProfitPrice AND inPosition == 1)
+
                 {
                     Sell[i] = 1;
                     inPosition = 0;
                 }
+				              
+                // Write movement
+				line =
+					NumToStr(pivotIdx, 1.0) + ";" +
+					NumToStr(extremeIdx, 1.0) + ";" +
+					"up;" +
+					NumToStr(amplitude_pct, 1.4) + ";" +
+					NumToStr(duree, 1.0) + "\n";
+
+				fputs(line, fh);
 
 				// Update debug variable
 				debugPivotPrice[i] = price;
@@ -237,8 +287,8 @@ for (i = 0; i < BarCount; i++)
 				extremePrice = price;
 
                 // Open new trade
-                if (!usePullback
-					AND (useTrend == "No" OR mainTrend[i] == -1))
+                if (useTrend == "No" OR mainTrend[i] == -1)
+
                 {
 					Short[i] = 1;
 					inPosition = 1;
@@ -282,6 +332,16 @@ for (i = 0; i < BarCount; i++)
 					inPosition = 0;
 				}
 
+				// Write movement
+				line =
+					NumToStr(pivotIdx, 1.0) + ";" +
+					NumToStr(extremeIdx, 1.0) + ";" +
+					"down;" +
+					NumToStr(amplitude_pct, 1.4) + ";" +
+					NumToStr(duree, 1.0) + "\n";
+
+				fputs(line, fh);
+
 				//Update debug variable
 				debugPivotPrice[i] = price;
 				debugPivotIdx[i] = pivotIdx;
@@ -299,8 +359,7 @@ for (i = 0; i < BarCount; i++)
 
                 // Open new trade
 
-                if (!usePullback
-					AND (useTrend == "No" OR mainTrend[i] == 1))
+                if (useTrend == "No" OR mainTrend[i] == 1)
                 {
 					Buy[i] = 1;
 					inPosition = 1;
@@ -312,6 +371,10 @@ for (i = 0; i < BarCount; i++)
 	}
 }
 
+
+
+// Close file
+fclose(fh);
 
 // Explore columns display
 //Filter = 1;
