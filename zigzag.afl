@@ -16,30 +16,18 @@ pctProfitShort = param("Short take profit threshold", 20, 0.5, 30, 0.25);
 
 // Pullback entry parameters
 usePullback = ParamToggle("usePullback", "No|Yes");
-//
-
-// Volatility filter user parameters
-
-volatilityPeriodLt = Param("VolatilityPeriodLt", 400, 5, 400, 5);
-volatilityPeriodSt = Param("VolatilityPeriodSt", 10, 1, 20, 5);
-volLong = Param("VolLong", 0, 0, 1, 1);
-volShort = Param("VolShort", 1, 0, 1, 1);
 
 // Trend filter user parameters
-
 useTrend = ParamList("useTrend", "Yes|No", 1);
 emaDayPeriod = Param("EmaDayPeriod", 20, 3, 50, 1);
 CoefEmaDay2 = Param("CoefEmaDay2", 1, 1, 10, 1);
 penteEmaDayV = Param("penteEmaDay", -0.5, -2, 2, 0.1);
 
 // -------------------------------------------------------------
-
 // Trend filter
-
 // -------------------------------------------------------------
 
 // Trend daily timeframe variables
-
 TimeFrameSet(inDaily);
 EmaDay1 = MA(C, emaDayPeriod);
 EmaDay2 = Ref(EmaDay1, (-1) * coefEmaDay2);
@@ -53,29 +41,7 @@ penteEmaDay = (emaDay1 - emaDay2) / emaDay1 * 100;
 mainTrend = IIf(penteEmaDay > penteEmaDayV, 1, -1);
 
 // -------------------------------------------------------------
-
-// Volatility filter
-
-// -------------------------------------------------------------
-
-// Volatility variables
-
-volExist = IIf(abs(H-L) == 0, 0, 1);
-volBarsLt = Sum(volExist, volatilityPeriodLt);
-volBarsSt = Sum(volExist, volatilityPeriodSt);
-volSumLt = Sum(abs(H-L), volatilityPeriodLt);
-volSumSt = Sum(abs(H-L), volatilityPeriodSt);
-volAverageLt = volsumLt / volBarsLt;
-volAverageSt = volsumSt / volBarsSt;
-
-// We calculate the volatility ratio
-volRatio = volAverageSt / volAverageLT;
-volDif = volAverageSt - volAverageLt;
-
-// -------------------------------------------------------------
-
 // Preparation
-
 // -------------------------------------------------------------
 
 // Need at least 3 bars to detect any movement
@@ -190,13 +156,6 @@ for (i = 0; i < BarCount; i++)
 
         if (trend == 1)
 		{
-			// If decided, we take into account volatility for profit taking
-
-			if (volLong[i] == 1)
-			{
-				takeProfitPrice *= volRatio[i];
-			}
-
 			// Check if take profit is hit
             if (price >= takeProfitPrice AND inPosition == 1)
             {
@@ -251,13 +210,7 @@ for (i = 0; i < BarCount; i++)
 		//----------------------------------------------------------
 		else
 		{
-            // If decided, we take into account volatility for profit taking		
-			if (volShort[i] == 1)
-			{
-				takeProfitPrice *= volRatio[i];
-			}
-
-			// Check if take profit is hit
+ 			// Check if take profit is hit
             if (Price <= takeProfitPrice AND inPosition == 1)
             {
                 Cover[i] = 1;
@@ -328,17 +281,11 @@ AddColumn(Short, "Short");
 AddColumn(Cover, "Cover");
 
 AddColumn(abs(H-L), "abs(h-l)");
-
-AddColumn(volExist, "volExist");
-
-AddColumn(volAverageLt, "volAverageLt");
-
-AddColumn(volAverageSt, "volAverageSt");
 AddColumn(debugPivotIdx, "DebugPivotIdx");
 
 AddColumn(penteEmaDay, "penteEmaDay");
-
 AddColumn(mainTrend, "mainTrend");
+
 AddColumn(debugPivotPrice, "DebugPivotPrice");
 AddColumn(debugRetracement, "DebugRetracement");
 AddColumn(debugExtremePrice, "DebugExtremePrice");
