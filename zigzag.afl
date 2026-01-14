@@ -16,7 +16,7 @@ pctProfitShort = param("Short take profit threshold", 20, 0.5, 30, 0.25);
 
 // Pullback entry parameters
 usePullback = ParamToggle("usePullback", "No|Yes");
-pullbackLevel = param("pullbackLevel", 0.1, 0.02, 0.4, 0.02);
+pctPullback = param("Pullback threshold", 0.1, 0.02, 0.4, 0.02);
 
 // Trend filter user parameters
 useTrend = ParamList("useTrend", "Yes|No", 1);
@@ -56,6 +56,7 @@ if (BarCount < 3)
 p = seuil_pct / 100.0;
 fProfitLong = pctProfitLong / 100;
 fProfitShort = pctProfitShort / 100;
+fPullback = pctPullback / 100;
 
 //Trading range variable initialization
 bir = status("barInRange");
@@ -154,11 +155,14 @@ for (i = 0; i < BarCount; i++)
 				duree         = extremeIdx - pivotIdx;
 
                 // If we are still in position, we close it
-                if (extremePrice < takeProfitPrice AND inPosition == 1)
+                if (inPosition == 1)
                 {
-                    Sell[i] = 1;
-                    inPosition = 0;
-                }
+                    if (extremePrice < takeProfitPrice)
+					{
+						Sell[i] = 1;
+						inPosition = 0;
+					}
+				}
 
 				// Update debug variable
 				debugPivotPrice[i] = price;
@@ -183,30 +187,44 @@ for (i = 0; i < BarCount; i++)
 			// We open a long position if the conditions are met
 			if (inPosition == 0)
 			{	
+				// If we don't use pullback, we enter in the candle that follows the new trend detection;
 				if (!usePullback
-						AND (useTrend == "No" OR mainTrend[i] == 1))
+					AND (useTrend == "No" OR mainTrend[i] == 1))
+				{
+					Buy[i] = 1;
+					inPosition = 1;
+					takeProfitPrice = price * (1 + fProfitLong);
+				}
+				// If we use pullback, we enter only if the candle Low is strictly inferior to the new trend validation price - pullback %
+				if (usePullback
+					AND (useTrend == "No" OR mainTrend[i] == 1))
+				{
+					pullbackLevel = pivotPrice * (1 + p) * (1 - fPullback);
+
+					if (L[i] < pullbackLevel)
 					{
 						Buy[i] = 1;
 						inPosition = 1;
-						takeProfitPrice = price * (1 + fProfitLong);
+						takeProfitPrice = pivotPrice * (1 + p) * (1 + fProfitLong);
 					}
-					if (usePullback
-						AND (useTrend == "No" OR mainTrend[i] == 1))
-					{
-						// Here we will put the pullback entry code
-					}
+				}
 			}
 
 			// If the take profit is hit, we close the position
-            if (price >= takeProfitPrice AND inPosition == 1)
+            if (inPosition == 1)
             {
-                Sell[i] = 1;
-                inPosition = 0;
+                if (price >= takeProfitPrice)
+				{
+					Sell[i] = 1;
+                	inPosition = 0;
+				}
             }
 		}
+
 		//----------------------------------------------------------
 		// DOWN trend: check rebound to validate the branch
 		//----------------------------------------------------------
+		
 		else
 		{
             
@@ -220,10 +238,13 @@ for (i = 0; i < BarCount; i++)
 				duree         = extremeIdx - pivotIdx;
 
 				// If we are still in position, we close it
-				if (extremePrice > takeProfitPrice AND inPosition == 1)
+				if (inPosition == 1)
 				{
-					Cover[i] = 1;
-					inPosition = 0;
+					if (extremePrice > takeProfitPrice)
+					{
+						Cover[i] = 1;
+						inPosition = 0;
+					}
 				}
 
 				//Update debug variable
@@ -255,18 +276,30 @@ for (i = 0; i < BarCount; i++)
 					inPosition = 1;
 					takeProfitPrice = price * (1 - fProfitShort);
 				}
+
+
 				if (usePullback
 					AND (useTrend == "No" OR mainTrend[i] == -1))
 				{
-					// Here we will put the pullback entry code
+					pullbackLevel = pivotPrice * (1 - p) * (1 + fPullback);
+
+					if (H[i] > pullbackLevel)
+					{
+						Short[i] = 1;
+						inPosition = 1;
+						takeProfitPrice = pivotPrice * (1 - p) * (1 - fProfitShort);
+					}
 				}
 			}
 			
 			// Check if take profit is hit
-            if (Price <= takeProfitPrice AND inPosition == 1)
+            if (inPosition == 1)
             {
-                Cover[i] = 1;
-                inPosition = 0;
+                if (Price <= takeProfitPrice)
+				{
+					Cover[i] = 1;
+                	inPosition = 0;
+				}
             }
 		}
 	}
