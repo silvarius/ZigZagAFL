@@ -16,6 +16,7 @@ pctProfitShort = param("Short take profit threshold", 20, 0.5, 30, 0.25);
 
 // Pullback entry parameters
 usePullback = ParamToggle("usePullback", "No|Yes");
+pullbackLevel = param("pullbackLevel", 0.1, 0.02, 0.4, 0.02);
 
 // Trend filter user parameters
 useTrend = ParamList("useTrend", "Yes|No", 1);
@@ -107,12 +108,6 @@ for (i = 0; i < BarCount; i++)
 				trend = 1;
 				extremeIdx = i - firstIndex;
 				extremePrice = price;
-                if (useTrend == "No" OR mainTrend[i] == 1)
-                {
-					Buy[i] = 1;
-					inPosition = 1;
-                }
-                takeProfitPrice = price * (1 + fProfitLong);
 				debugExtremePrice[i] = extremePrice;
 			}
 			else
@@ -121,13 +116,6 @@ for (i = 0; i < BarCount; i++)
 				trend = -1;
 				extremeIdx = i - firstIndex;
 				extremePrice = price;
-				if (useTrend == "No" OR mainTrend[i] == -1)
-				{
-					Short[i] = 1;
-					inPosition = 1;
-                }
-
-                takeProfitPrice = price * (1 - fProfitShort);
 				debugExtremePrice[i] = extremePrice;
 			}
 			continue;
@@ -156,7 +144,22 @@ for (i = 0; i < BarCount; i++)
 
         if (trend == 1)
 		{
-			// Check if take profit is hit
+			// We open a long position if the conditions are met
+			if (inPosition == 0)
+				if (!usePullback
+					AND (useTrend == "No" OR mainTrend[i] == 1))
+                {
+					Buy[i] = 1;
+					inPosition = 1;
+					takeProfitPrice = price * (1 + fProfitLong);
+				}
+				if (usePullback
+					AND (useTrend == "No" OR mainTrend[i] == 1))
+				{
+					// Here we will put the pullback entry code
+				}
+
+			// If the take profit is hit, we close the position
             if (price >= takeProfitPrice AND inPosition == 1)
             {
                 Sell[i] = 1;
@@ -172,7 +175,7 @@ for (i = 0; i < BarCount; i++)
 				amplitude_pct = (extremePrice / pivotPrice - 1.0) * 100.0;
 				duree         = extremeIdx - pivotIdx;
 
-                // Close the present trade?
+                // If we are still in position, we close it
                 if (extremePrice < takeProfitPrice AND inPosition == 1)
                 {
                     Sell[i] = 1;
@@ -195,14 +198,6 @@ for (i = 0; i < BarCount; i++)
 				extremeIdx   = i - firstIndex;
 				extremePrice = price;
 
-                // Open new trade
-                if (!usePullback
-					AND (useTrend == "No" OR mainTrend[i] == -1))
-                {
-					Short[i] = 1;
-					inPosition = 1;
-					takeProfitPrice = price * (1 - fProfitShort);
-				}
 			}
 		}
 		//----------------------------------------------------------
@@ -210,7 +205,22 @@ for (i = 0; i < BarCount; i++)
 		//----------------------------------------------------------
 		else
 		{
- 			// Check if take profit is hit
+ 			// We open a short position if the conditions are met
+			if (inPosition == 0)
+				if (!usePullback
+					AND (useTrend == "No" OR mainTrend[i] == -1))
+                {
+					Short[i] = 1;
+					inPosition = 1;
+					takeProfitPrice = price * (1 - fProfitShort);
+				}
+				if (usePullback
+					AND (useTrend == "No" OR mainTrend[i] == -1))
+				{
+					// Here we will put the pullback entry code
+				}
+
+			// Check if take profit is hit
             if (Price <= takeProfitPrice AND inPosition == 1)
             {
                 Cover[i] = 1;
@@ -250,16 +260,6 @@ for (i = 0; i < BarCount; i++)
 				extremeIdx   = i - firstIndex;
 				extremePrice = price;
 
-                // Open new trade
-
-                if (!usePullback
-					AND (useTrend == "No" OR mainTrend[i] == 1))
-                {
-					Buy[i] = 1;
-					inPosition = 1;
-					takeProfitPrice = price * (1 + fProfitLong);
-
-				}
 			}
 		}
 	}

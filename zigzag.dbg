@@ -2,7 +2,6 @@
 <AmiBroker-DebugContext CompactMode="1" FormatVersion="1">
 <Watches/>
 <Breakpoints>
-<Breakpoint Line="15"/>
 <Breakpoint Line="131"/>
 <Breakpoint Line="232"/>
 </Breakpoints>
