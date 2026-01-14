@@ -16,7 +16,7 @@ pctProfitShort = param("Short take profit threshold", 20, 0.5, 30, 0.25);
 
 // Pullback entry parameters
 usePullback = ParamToggle("usePullback", "No|Yes");
-pctPullback = param("Pullback threshold", 0.1, 0.02, 0.4, 0.02);
+pctPullback = Param("Pullback threshold", 0.8, 0.1, 1, 0.1);
 
 // Trend filter user parameters
 useTrend = ParamList("useTrend", "Yes|No", 1);
