@@ -19,27 +19,28 @@ usePullback = ParamToggle("usePullback", "No|Yes");
 pctPullback = Param("Pullback threshold", 0.8, 0.1, 1, 0.1);
 
 // Trend filter user parameters
-useTrend = ParamList("useTrend", "Yes|No", 1);
-emaDayPeriod = Param("EmaDayPeriod", 20, 3, 50, 1);
-CoefEmaDay2 = Param("CoefEmaDay2", 1, 1, 10, 1);
-penteEmaDayV = Param("penteEmaDay", -0.5, -2, 2, 0.1);
+useTrend = ParamToggle("useTrend", "No|yes");
+emaPeriod = Param("EmaPeriod", 8, 3, 50, 1);
+CoefEma2 = Param("CoefEma2", 1, 1, 10, 1); // The number of candles between the 2 EMA points that serve to calculate the EMA slope
+penteEmaLongMin = Param("penteEmaLongMin", 0, 0, 2, 0.1);
+penteEmaShortMin = Param("penteEmaShortMin", 0, -2, 0, -0.1);
 
 // -------------------------------------------------------------
-// Trend filter
+// Ema Trend score 
 // -------------------------------------------------------------
 
 // Trend daily timeframe variables
-TimeFrameSet(inDaily);
-EmaDay1 = MA(C, emaDayPeriod);
-EmaDay2 = Ref(EmaDay1, (-1) * coefEmaDay2);
+TimeFrameSet(inWeekly);
+Ema1 = MA(C, emaPeriod);
+Ema2 = Ref(Ema1, (-1) * coefEma2);
 TimeFrameRestore();
-EmaDay1 = TimeFrameExpand(EmaDay1, inDaily);
-EmaDay2 = TimeFrameExpand(EmaDay2, inDaily);
-penteEmaDay = (emaDay1 - emaDay2) / emaDay1 * 100;
+Ema1 = TimeFrameExpand(Ema1, inWeekly);
+Ema2 = TimeFrameExpand(Ema2, inWeekly);
+penteEma = (ema1 - ema2) / ema1 * 100;
 
 // We calculate the trend filter
 
-mainTrend = IIf(penteEmaDay > penteEmaDayV, 1, -1);
+EmaTrendScore = IIf(penteEma > penteEmaLongMin, 1, IIF(penteEma < penteEmaShortMin, -1, 0));
 
 // -------------------------------------------------------------
 // Preparation
@@ -189,7 +190,7 @@ for (i = 0; i < BarCount; i++)
 			{	
 				// If we don't use pullback, we enter in the candle that follows the new trend detection;
 				if (!usePullback
-					AND (useTrend == "No" OR mainTrend[i] == 1))
+					AND (useTrend == "No" OR EmaTrendScore[i] == 1))
 				{
 					Buy[i] = 1;
 					inPosition = 1;
@@ -197,7 +198,7 @@ for (i = 0; i < BarCount; i++)
 				}
 				// If we use pullback, we enter only if the candle Low is strictly inferior to the new trend validation price - pullback %
 				if (usePullback
-					AND (useTrend == "No" OR mainTrend[i] == 1))
+					AND (useTrend == "No" OR EmaTrendScore[i] == 1))
 				{
 					pullbackLevel = pivotPrice * (1 + p) * (1 - fPullback);
 
@@ -270,7 +271,7 @@ for (i = 0; i < BarCount; i++)
 			if (inPosition == 0)
 			{
 				if (!usePullback
-					AND (useTrend == "No" OR mainTrend[i] == -1))
+					AND (useTrend == "No" OR EmaTrendScore[i] == -1))
                 {
 					Short[i] = 1;
 					inPosition = 1;
@@ -279,7 +280,7 @@ for (i = 0; i < BarCount; i++)
 
 
 				if (usePullback
-					AND (useTrend == "No" OR mainTrend[i] == -1))
+					AND (useTrend == "No" OR EmaTrendScore[i] == -1))
 				{
 					pullbackLevel = pivotPrice * (1 - p) * (1 + fPullback);
 
@@ -323,7 +324,7 @@ AddColumn(abs(H-L), "abs(h-l)");
 AddColumn(debugPivotIdx, "DebugPivotIdx");
 
 AddColumn(penteEmaDay, "penteEmaDay");
-AddColumn(mainTrend, "mainTrend");
+AddColumn(EmaTrendScore, "EmaTrendScore");
 
 AddColumn(debugPivotPrice, "DebugPivotPrice");
 AddColumn(debugRetracement, "DebugRetracement");
