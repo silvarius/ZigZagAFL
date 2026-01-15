@@ -323,7 +323,8 @@ AddColumn(Cover, "Cover");
 AddColumn(abs(H-L), "abs(h-l)");
 AddColumn(debugPivotIdx, "DebugPivotIdx");
 
-AddColumn(penteEmaDay, "penteEmaDay");
+AddColumn(penteEmaLongMin, "penteEmaLongMin");
+AddColumn(penteEmaShortMin, "penteEmaShortMin");
 AddColumn(EmaTrendScore, "EmaTrendScore");
 
 AddColumn(debugPivotPrice, "DebugPivotPrice");
