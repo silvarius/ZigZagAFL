@@ -25,8 +25,11 @@ CoefEma2 = Param("CoefEma2", 1, 1, 10, 1); // The number of candles between the 
 penteEmaLongMin = Param("penteEmaLongMin", 0, 0, 2, 0.1);
 penteEmaShortMin = Param("penteEmaShortMin", 0, -2, 0, -0.1);
 
+// Candle filter parameters
+useCandle = ParamToggle("useCandle", "No|Yes");
+
 // -------------------------------------------------------------
-// Ema Trend score 
+// Ema Trend filter
 // -------------------------------------------------------------
 
 // Trend daily timeframe variables
@@ -39,8 +42,39 @@ Ema2 = TimeFrameExpand(Ema2, inWeekly);
 penteEma = (ema1 - ema2) / ema1 * 100;
 
 // We calculate the trend filter
-
 EmaTrendScore = IIf(penteEma > penteEmaLongMin, 1, IIF(penteEma < penteEmaShortMin, -1, 0));
+
+// ---------------------------------------------------------------
+// Candle filter
+// ---------------------------------------------------------------
+
+// We want to check if the previous candle on the weekly timeframe was green or red
+TimeFrameSet(inWeekly);
+candleColor = iif(ref(C, -1) - ref(O, -1) > 0, 1, iif(ref(C, -1) - ref(O, -1) < 0, -1, 0)); // candleColor = 1 => green candle, -1 => red candle
+TimeFrameRestore();
+candleColor = TimeFrameExpand(candleColor, inWeekly);
+
+// ---------------------------------------------------------------
+// Filters merge
+// ---------------------------------------------------------------
+
+// We initialize the filter variables
+filterLong = True;
+filterShort = True;
+
+// We merge first the Ema trend filter
+if (useTrend)
+{
+	filterLong = iif(EmatTrendScore == 1, True, False);
+	filterShort = iif(EmaTrendScore == -1, True, False);
+}
+
+// We then merge the candle filter
+if (useCandle)
+{
+	filterLong = filterLong AND iif(candleColor == 1, True, False);
+	filterShort = filterShort AND iif(candleColor == -1, True, Flase);
+}
 
 // -------------------------------------------------------------
 // Preparation
@@ -190,7 +224,7 @@ for (i = 0; i < BarCount; i++)
 			{	
 				// If we don't use pullback, we enter in the candle that follows the new trend detection;
 				if (!usePullback
-					AND (useTrend == "No" OR EmaTrendScore[i] == 1))
+					AND (!useTrend OR EmaTrendScore[i] == 1))
 				{
 					Buy[i] = 1;
 					inPosition = 1;
@@ -198,7 +232,7 @@ for (i = 0; i < BarCount; i++)
 				}
 				// If we use pullback, we enter only if the candle Low is strictly inferior to the new trend validation price - pullback %
 				if (usePullback
-					AND (useTrend == "No" OR EmaTrendScore[i] == 1))
+					AND (!useTrend OR EmaTrendScore[i] == 1))
 				{
 					pullbackLevel = pivotPrice * (1 + p) * (1 - fPullback);
 
@@ -271,7 +305,7 @@ for (i = 0; i < BarCount; i++)
 			if (inPosition == 0)
 			{
 				if (!usePullback
-					AND (useTrend == "No" OR EmaTrendScore[i] == -1))
+					AND (!useTrend OR EmaTrendScore[i] == -1))
                 {
 					Short[i] = 1;
 					inPosition = 1;
@@ -280,7 +314,7 @@ for (i = 0; i < BarCount; i++)
 
 
 				if (usePullback
-					AND (useTrend == "No" OR EmaTrendScore[i] == -1))
+					AND (!useTrend OR EmaTrendScore[i] == -1))
 				{
 					pullbackLevel = pivotPrice * (1 - p) * (1 + fPullback);
 
