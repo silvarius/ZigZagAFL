@@ -16,12 +16,15 @@ pctProfitShort = param("Short take profit threshold", 20, 0.5, 30, 0.25);
 
 // Pullback entry parameters
 usePullback = ParamToggle("usePullback", "No|Yes");
-pctPullback = Param("Pullback threshold", 0.8, 0.1, 1, 0.1);
+pctPullback = Param("Pullback threshold", 0.01, 0.01, 1, 0.01);
+
+// Offset entry parameters.
+maxEntryOffset = Param("maxEntryOffset", 5, 0, 60, 1); // this represent the maximum number of candles that can exist between the trend validation point and the entry point
 
 // Trend filter user parameters
 useTrend = ParamToggle("useTrend", "No|yes");
 emaPeriod = Param("EmaPeriod", 8, 3, 50, 1);
-CoefEma2 = Param("CoefEma2", 1, 1, 10, 1); // The number of candles between the 2 EMA points that serve to calculate the EMA slope
+CoefEma2 = Param("CoefEma2", 2, 1, 10, 1); // The number of candles between the 2 EMA points that serve to calculate the EMA slope
 penteEmaLongMin = Param("penteEmaLongMin", 0, 0, 2, 0.1);
 penteEmaShortMin = Param("penteEmaShortMin", 0, -2, 0, -0.1);
 
@@ -65,7 +68,7 @@ filterShort = True;
 // We merge first the Ema trend filter
 if (useTrend)
 {
-	filterLong = iif(EmatTrendScore == 1, True, False);
+	filterLong = iif(EmaTrendScore == 1, True, False);
 	filterShort = iif(EmaTrendScore == -1, True, False);
 }
 
@@ -73,7 +76,7 @@ if (useTrend)
 if (useCandle)
 {
 	filterLong = filterLong AND iif(candleColor == 1, True, False);
-	filterShort = filterShort AND iif(candleColor == -1, True, Flase);
+	filterShort = filterShort AND iif(candleColor == -1, True, False);
 }
 
 // -------------------------------------------------------------
@@ -142,6 +145,7 @@ for (i = 0; i < BarCount; i++)
 			if (price >= pivotPrice * (1 + p))
 			{
 				trend = 1;
+				TrendValidationIndex = i - firstIndex;
 				extremeIdx = i - firstIndex;
 				extremePrice = price;
 				debugExtremePrice[i] = extremePrice;
@@ -150,6 +154,7 @@ for (i = 0; i < BarCount; i++)
 			if (price <= pivotPrice * (1 - p))
 			{
 				trend = -1;
+				TrendValidationIndex = i - firstIndex;
 				extremeIdx = i - firstIndex;
 				extremePrice = price;
 				debugExtremePrice[i] = extremePrice;
@@ -212,6 +217,7 @@ for (i = 0; i < BarCount; i++)
 
 				// Switch trend
 				trend        = -1;
+				trendValidationIndex = i - firstIndex; // The index when the trend was validated. We will use it for the position entering max offset.
 				extremeIdx   = i - firstIndex;
 				extremePrice = price;
 
@@ -220,19 +226,28 @@ for (i = 0; i < BarCount; i++)
 			}
 
 			// We open a long position if the conditions are met
-			if (inPosition == 0)
+
+			// We first check if we are within the max position offset range
+			if (i - firstIndex <= trendValidationIndex + maxEntryOffset)
+			{
+				withinOffset = True;
+			}
+			else
+			{
+				withinOffset = False;
+			}
+
+			if (inPosition == 0 AND withinOffset)
 			{	
 				// If we don't use pullback, we enter in the candle that follows the new trend detection;
-				if (!usePullback
-					AND (!useTrend OR EmaTrendScore[i] == 1))
+				if (!usePullback AND filterLong[i])
 				{
 					Buy[i] = 1;
 					inPosition = 1;
 					takeProfitPrice = price * (1 + fProfitLong);
 				}
 				// If we use pullback, we enter only if the candle Low is strictly inferior to the new trend validation price - pullback %
-				if (usePullback
-					AND (!useTrend OR EmaTrendScore[i] == 1))
+				if (usePullback AND filterLong[i])
 				{
 					pullbackLevel = pivotPrice * (1 + p) * (1 - fPullback);
 
@@ -294,6 +309,7 @@ for (i = 0; i < BarCount; i++)
 
 				// Switch trend
 				trend        = 1;
+				trendValidationIndex = i - firstIndex; // The index when the trend was validated. We will use it for the position entering max offset.
 				extremeIdx   = i - firstIndex;
 				extremePrice = price;
 
@@ -302,19 +318,27 @@ for (i = 0; i < BarCount; i++)
 			}
 
 			// We open a short position if the conditions are met
-			if (inPosition == 0)
+
+			// We first check if we are within the max position offset range
+			if (i - firstIndex <= trendValidationIndex + maxEntryOffset)
 			{
-				if (!usePullback
-					AND (!useTrend OR EmaTrendScore[i] == -1))
+				withinOffset = True;
+			}
+			else
+			{
+				withinOffset = False;
+			}
+
+			if (inPosition == 0 AND withinOffset)
+			{	
+				if (!usePullback AND filterShort[i])
                 {
 					Short[i] = 1;
 					inPosition = 1;
 					takeProfitPrice = price * (1 - fProfitShort);
 				}
 
-
-				if (usePullback
-					AND (!useTrend OR EmaTrendScore[i] == -1))
+				if (usePullback AND filterShort[i])
 				{
 					pullbackLevel = pivotPrice * (1 - p) * (1 + fPullback);
 
