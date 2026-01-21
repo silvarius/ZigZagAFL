@@ -11,25 +11,28 @@
 
 // General user parameters
 seuil_pct = Param("ZigZag threshold (%)", 3.5, 0.5 , 5, 0.25);
-pctProfitLong = Param("Long take profit threshold", 30, 0.5, 30, 0.5);
-pctProfitShort = param("Short take profit threshold", 20, 0.5, 30, 0.25);
+pctProfitLong = Param("Long take profit threshold", 30, 30, 60, 2);
+pctProfitShort = Param("Short take profit threshold", 10, 0.5, 30, 0.25);
 
 // Pullback entry parameters
 usePullback = ParamToggle("usePullback", "No|Yes");
 pctPullback = Param("Pullback threshold", 0.01, 0.01, 1, 0.01);
 
 // Offset entry parameters.
-maxEntryOffset = Param("maxEntryOffset", 5, 0, 60, 1); // this represent the maximum number of candles that can exist between the trend validation point and the entry point
+maxEntryOffset = Param("maxEntryOffset", 1, 1, 5, 1); // this represent the maximum number of candles that can exist between the trend validation point and the entry point
 
 // Trend filter user parameters
 useTrend = ParamToggle("useTrend", "No|yes");
 emaPeriod = Param("EmaPeriod", 8, 3, 50, 1);
-CoefEma2 = Param("CoefEma2", 2, 1, 10, 1); // The number of candles between the 2 EMA points that serve to calculate the EMA slope
-penteEmaLongMin = Param("penteEmaLongMin", 0, 0, 2, 0.1);
-penteEmaShortMin = Param("penteEmaShortMin", 0, -2, 0, -0.1);
+CoefEma2 = Param("CoefEma2", 8, 1, 10, 1); // The number of candles between the 2 EMA points that serve to calculate the EMA slope
+penteEmaLongMin = Param("penteEmaLongMin", 1, 0, 5, 0.5);
+penteEmaShortMin = Param("penteEmaShortMin", -1, -5, 0, 0.5);
 
 // Candle filter parameters
 useCandle = ParamToggle("useCandle", "No|Yes");
+
+// Heikin ashi candle parameters
+useHaCandle = ParamToggle("useHaCandle", "No|Yes");
 
 // -------------------------------------------------------------
 // Ema Trend filter
@@ -53,9 +56,22 @@ EmaTrendScore = IIf(penteEma > penteEmaLongMin, 1, IIF(penteEma < penteEmaShortM
 
 // We want to check if the previous candle on the weekly timeframe was green or red
 TimeFrameSet(inWeekly);
-candleColor = iif(ref(C, -1) - ref(O, -1) > 0, 1, iif(ref(C, -1) - ref(O, -1) < 0, -1, 0)); // candleColor = 1 => green candle, -1 => red candle
+candleColor = iif(ref(C, -1) - ref(O, -1) >= 0, colorGreen, iif(ref(C, -1) - ref(O, -1) < 0, colorRed, 0));
 TimeFrameRestore();
 candleColor = TimeFrameExpand(candleColor, inWeekly);
+
+// ---------------------------------------------------------------
+// Heikin Ashi candle filter
+// ---------------------------------------------------------------
+
+// We build the OHLC Heikin Ashi candles values and look at the previous one color
+TimeFrameSet (inWeekly);
+	haO = (ref(O, -1) + ref(C, -1)) / 2;
+	haC = (O + H + L + C) / 4;
+	haColor = iif(haC >= haO, colorGreen, colorRed);
+	previousHaColor = ref(haColor, -1);
+TimeFrameRestore();
+previousHaColor = TimeFrameExpand(previousHaColor, InWeekly);
 
 // ---------------------------------------------------------------
 // Filters merge
@@ -68,15 +84,22 @@ filterShort = True;
 // We merge first the Ema trend filter
 if (useTrend)
 {
-	filterLong = iif(EmaTrendScore == 1, True, False);
-	filterShort = iif(EmaTrendScore == -1, True, False);
+	filterLong = EmaTrendScore == 1;
+	filterShort = EmaTrendScore == -1;
 }
 
 // We then merge the candle filter
 if (useCandle)
 {
-	filterLong = filterLong AND iif(candleColor == 1, True, False);
-	filterShort = filterShort AND iif(candleColor == -1, True, False);
+	filterLong = filterLong AND candleColor == colorGreen;
+	filterShort = filterShort AND candleColor == colorRed;
+}
+
+// we then merge the heikin ashi candle filter
+if (useHaCandle)
+{
+	filterLong = filterLong AND previousHaColor == colorGreen;
+	filterShort = filterShort AND previousHaColor == colorRed;
 }
 
 // -------------------------------------------------------------
@@ -385,6 +408,7 @@ AddColumn(Cover, "Cover");
 AddColumn(abs(H-L), "abs(h-l)");
 AddColumn(debugPivotIdx, "DebugPivotIdx");
 
+AddColumn(penteEma, "PenteEma");
 AddColumn(penteEmaLongMin, "penteEmaLongMin");
 AddColumn(penteEmaShortMin, "penteEmaShortMin");
 AddColumn(EmaTrendScore, "EmaTrendScore");
