@@ -34,6 +34,9 @@ useCandle = ParamToggle("useCandle", "No|Yes");
 // Heikin ashi candle parameters
 useHaCandle = ParamToggle("useHaCandle", "No|Yes");
 
+// Time filter parameters
+useTimeFilter = ParamToggle("useTimeFilter", "No|Yes");
+
 // -------------------------------------------------------------
 // Ema Trend filter
 // -------------------------------------------------------------
@@ -73,6 +76,12 @@ TimeFrameSet (inWeekly);
 TimeFrameRestore();
 previousHaColor = TimeFrameExpand(previousHaColor, InWeekly);
 
+// --------------------------------------------------------------
+// Time filter
+// --------------------------------------------------------------
+
+timeFilter = dayOfWeek() != 6 AND dayOfWeek() != 5; // We don't enter position on weekEnds
+
 // ---------------------------------------------------------------
 // Filters merge
 // ---------------------------------------------------------------
@@ -100,6 +109,13 @@ if (useHaCandle)
 {
 	filterLong = filterLong AND previousHaColor == colorGreen;
 	filterShort = filterShort AND previousHaColor == colorRed;
+}
+
+// We then merge the time filter
+if (useTimeFilter)
+{
+	filterLong = filterLong AND timeFilter;
+	filterShort = filterShort AND timeFilter;
 }
 
 // -------------------------------------------------------------
