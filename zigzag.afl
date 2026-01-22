@@ -1,12 +1,6 @@
 //==============================================================
-// ZigZag "Close only"
+// ZigZag
 // Port of Python detect_zigzag() V1-18
-// - ASCII comments
-// - No last-branch capture
-// - Single loop implementation
-// - For backtesting, scan, or Explore
-
-// - Addition of volatility and trend filters
 //==============================================================
 
 // General user parameters
@@ -23,10 +17,13 @@ maxEntryOffset = Param("maxEntryOffset", 1, 1, 5, 1); // this represent the maxi
 
 // Trend filter user parameters
 useTrend = ParamToggle("useTrend", "No|yes");
+useRoc = paramToggle("useRoc", "No|Yes");
+rocPeriod = Param("rocPeriod", 8, 1, 20, 1);
 emaPeriod = Param("EmaPeriod", 8, 3, 50, 1);
 CoefEma2 = Param("CoefEma2", 8, 1, 10, 1); // The number of candles between the 2 EMA points that serve to calculate the EMA slope
 penteEmaLongMin = Param("penteEmaLongMin", 1, 0, 5, 0.5);
 penteEmaShortMin = Param("penteEmaShortMin", -1, -5, 0, 0.5);
+rocThreshold = Param("coefRoc", 1, 1, 10, 1);
 
 // Candle filter parameters
 useCandle = ParamToggle("useCandle", "No|Yes");
@@ -38,20 +35,27 @@ useHaCandle = ParamToggle("useHaCandle", "No|Yes");
 useTimeFilter = ParamToggle("useTimeFilter", "No|Yes");
 
 // -------------------------------------------------------------
-// Ema Trend filter
+// Trend filters
 // -------------------------------------------------------------
 
 // Trend daily timeframe variables
 TimeFrameSet(inWeekly);
+rocIndicator = Roc(C, rocPeriod);
 Ema1 = MA(C, emaPeriod);
 Ema2 = Ref(Ema1, (-1) * coefEma2);
 TimeFrameRestore();
 Ema1 = TimeFrameExpand(Ema1, inWeekly);
 Ema2 = TimeFrameExpand(Ema2, inWeekly);
+rocIndicator = TimeFrameExpand(rocIndicator, inWeekly);
 penteEma = (ema1 - ema2) / ema1 * 100;
 
-// We calculate the trend filter
+// We calculate the ema trend filter score
 EmaTrendScore = IIf(penteEma > penteEmaLongMin, 1, IIF(penteEma < penteEmaShortMin, -1, 0));
+
+// We calculate the roc trend filter scores
+rocLong = rocIndicator >= rocThreshold;
+rocShort = rocIndicator <= -rocThreshold;
+
 
 // ---------------------------------------------------------------
 // Candle filter
@@ -95,6 +99,13 @@ if (useTrend)
 {
 	filterLong = EmaTrendScore == 1;
 	filterShort = EmaTrendScore == -1;
+}
+
+// We then merge the roc trend filter
+if (useRoc)
+{
+	filterLong = filterLong AND rocLong;
+	filterShort = filterShort AND rocShort;
 }
 
 // We then merge the candle filter
@@ -428,6 +439,10 @@ AddColumn(penteEma, "PenteEma");
 AddColumn(penteEmaLongMin, "penteEmaLongMin");
 AddColumn(penteEmaShortMin, "penteEmaShortMin");
 AddColumn(EmaTrendScore, "EmaTrendScore");
+
+AddColumn(rocIndicator, "rocIndicator");
+AddColumn(rocLong, "rocLong");
+AddColumn(rocShort, "rocShort");
 
 AddColumn(debugPivotPrice, "DebugPivotPrice");
 AddColumn(debugRetracement, "DebugRetracement");
