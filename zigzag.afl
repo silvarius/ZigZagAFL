@@ -3,8 +3,12 @@
 // Port of Python detect_zigzag() V1-18
 //==============================================================
 
+// We set position size
+pctMargin = Param("pctMargin", 100, 1, 100, 1);
+SetPositionSize(pctMargin, spsPercentOfEquity);
+
 // General user parameters
-seuil_pct = Param("ZigZag threshold (%)", 3, 2 , 10, 0.5);
+seuil_pct = Param("ZigZag threshold (%)", 3, 2 , 10, 0.25);
 pctProfitLong = Param("Long take profit threshold", 30, 10, 60, 2);
 pctProfitShort = Param("Short take profit threshold", 10, 0.5, 30, 0.25);
 
@@ -22,7 +26,7 @@ maxEntryOffset = Param("maxEntryOffset", 1, 1, 5, 1); // this represent the maxi
 // Trend filter user parameters
 useTrend = ParamToggle("useTrend", "No|yes");
 useRoc = paramToggle("useRoc", "No|Yes");
-rocPeriod = Param("rocPeriod", 3, 1, 20, 1);
+rocPeriod = Param("rocPeriod", 9, 1, 20, 1);
 emaPeriod = Param("EmaPeriod", 8, 3, 50, 1);
 CoefEma2 = Param("CoefEma2", 8, 1, 10, 1); // The number of candles between the 2 EMA points that serve to calculate the EMA slope
 penteEmaLongMin = Param("penteEmaLongMin", 1, 0, 5, 0.5);
@@ -49,7 +53,7 @@ Ema1 = MA(C, emaPeriod);
 Ema2 = Ref(Ema1, (-1) * coefEma2);
 TimeFrameRestore();
 Ema1 = TimeFrameExpand(Ema1, timeFrameVar);
-Ema2 = TimeFrameExpand(Ema2, timeFrameVar);
+Ema2 = TimeFrameExpand(Ema2, inWeekly);
 rocIndicator = TimeFrameExpand(rocIndicator, timeFrameVar);
 penteEma = (ema1 - ema2) / ema1 * 100;
 
