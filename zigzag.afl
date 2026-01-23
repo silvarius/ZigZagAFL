@@ -4,9 +4,13 @@
 //==============================================================
 
 // General user parameters
-seuil_pct = Param("ZigZag threshold (%)", 3.5, 0.5 , 5, 0.25);
-pctProfitLong = Param("Long take profit threshold", 30, 30, 60, 2);
+seuil_pct = Param("ZigZag threshold (%)", 3, 2 , 10, 0.5);
+pctProfitLong = Param("Long take profit threshold", 30, 10, 60, 2);
 pctProfitShort = Param("Short take profit threshold", 10, 0.5, 30, 0.25);
+
+// Timeframe parameters
+timeFrame = ParamList("timeFrame", "inDaily, inWeekly");
+timeFrameVar = iif(timeFrame == "inDaily", inDaily, inWeekly);
 
 // Pullback entry parameters
 usePullback = ParamToggle("usePullback", "No|Yes");
@@ -18,7 +22,7 @@ maxEntryOffset = Param("maxEntryOffset", 1, 1, 5, 1); // this represent the maxi
 // Trend filter user parameters
 useTrend = ParamToggle("useTrend", "No|yes");
 useRoc = paramToggle("useRoc", "No|Yes");
-rocPeriod = Param("rocPeriod", 8, 1, 20, 1);
+rocPeriod = Param("rocPeriod", 3, 1, 20, 1);
 emaPeriod = Param("EmaPeriod", 8, 3, 50, 1);
 CoefEma2 = Param("CoefEma2", 8, 1, 10, 1); // The number of candles between the 2 EMA points that serve to calculate the EMA slope
 penteEmaLongMin = Param("penteEmaLongMin", 1, 0, 5, 0.5);
@@ -39,14 +43,14 @@ useTimeFilter = ParamToggle("useTimeFilter", "No|Yes");
 // -------------------------------------------------------------
 
 // Trend daily timeframe variables
-TimeFrameSet(inWeekly);
+TimeFrameSet(timeFrameVar);
 rocIndicator = Roc(C, rocPeriod);
 Ema1 = MA(C, emaPeriod);
 Ema2 = Ref(Ema1, (-1) * coefEma2);
 TimeFrameRestore();
-Ema1 = TimeFrameExpand(Ema1, inWeekly);
-Ema2 = TimeFrameExpand(Ema2, inWeekly);
-rocIndicator = TimeFrameExpand(rocIndicator, inWeekly);
+Ema1 = TimeFrameExpand(Ema1, timeFrameVar);
+Ema2 = TimeFrameExpand(Ema2, timeFrameVar);
+rocIndicator = TimeFrameExpand(rocIndicator, timeFrameVar);
 penteEma = (ema1 - ema2) / ema1 * 100;
 
 // We calculate the ema trend filter score
