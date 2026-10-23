@@ -1,0 +1,487 @@
+//==============================================================
+// ZigZag "Close only"
+// Port of Python detect_zigzag() V1-18
+// - ASCII comments
+// - No last-branch capture
+// - Single loop implementation
+// - For backtesting, scan, or Explore
+// - Addition of volatility and trend filters
+// - Addition of entry on pullback
+// - Addition of High and Low use for pullbacks and take profit
+//==============================================================
+
+// General user parameters
+seuil_pct = Param("ZigZag threshold (%)", 3.5, 0.5 , 5, 0.25);
+pctProfitLong = Param("Long take profit threshold", 30, 0.5, 30, 0.5);
+pctProfitShort = Param("Short take profit threshold", 1, 0.5, 30, 0.25);
+csvPath   = ParamStr("CSV path","C:\\Users\\admin\\Insync\\atalan.files@gmail.com\\Google Drive atalan\\RESODIA\\Trading\\AFL\\mouvements_zig-zag.csv");
+useExport = ParamToggle("UseExport", "No|Yes");
+useDebug = ParamToggle("useDebug", "No|Yes");
+
+// High / Low user parameters
+useHighLowForTakeProfit = ParamToggle("Use H/L for TP", "No|Yes");
+useHighLowForPullback = ParamToggle("use H/L for pullback", "No|Yes");
+
+// Pullback user parameters
+usePullback = ParamToggle("usePullback", "No|Yes");
+pullbackPct = Param("pullback threshold (%)", 0.01, 0, 2, 0.005);
+if (pullbackPct > seuil_pct) // Pullback threshold must be less than zigzag threshold to make sense
+{
+	error("Parameter error: pullback threshold must be less than zigzag threshold"); // If not, we stop the script
+}
+
+
+// Volatility filter user parameters
+volatilityPeriodLt = Param("VolatilityPeriodLt", 400, 5, 400, 5);
+volatilityPeriodSt = Param("VolatilityPeriodSt", 10, 1, 20, 5);
+volLong = Param("VolLong", 0, 0, 1, 1);
+volShort = Param("VolShort", 0, 0, 1, 1);
+
+// Trend filter user parameters
+useTrend = ParamToggle("useTrend", "No|Yes");
+emaDayPeriod = Param("EmaDayPeriod", 20, 3, 50, 1);
+coefEmaDay2 = Param("CoefEmaDay2", 1, 1, 10, 1);
+penteEmaDayV = Param("penteEmaDay", -0.5, -2, 2, 0.1);
+
+// -------------------------------------------------------------
+// Trend filter
+// -------------------------------------------------------------
+
+// Trend daily timeframe variables
+TimeFrameSet(inDaily);
+EmaDay1 = MA(C, emaDayPeriod);
+EmaDay2 = Ref(EmaDay1, (-1) * coefEmaDay2);
+TimeFrameRestore();
+EmaDay1 = TimeFrameExpand(EmaDay1, inDaily);
+EmaDay2 = TimeFrameExpand(EmaDay2, inDaily);
+penteEmaDay = (emaDay1 - emaDay2) / emaDay1 * 100;
+
+// We calculate the trend filter
+mainTrend = IIf(penteEmaDay > penteEmaDayV, 1, -1);
+
+// -------------------------------------------------------------
+// Volatility filter
+// -------------------------------------------------------------
+
+// Volatility variables
+volExist = IIf(abs(H-L) == 0, 0, 1);
+volBarsLt = Sum(volExist, volatilityPeriodLt);
+volBarsSt = Sum(volExist, volatilityPeriodSt);
+volSumLt = Sum(abs(H-L), volatilityPeriodLt);
+volSumSt = Sum(abs(H-L), volatilityPeriodSt);
+
+volAverageLt = volsumLt / Nz(volBarsLt, 1);
+volAverageSt = volsumSt / Nz(volBarsSt, 1);
+
+volDif = volAverageSt - volAverageLt;
+
+// -------------------------------------------------------------
+// Preparation
+// -------------------------------------------------------------
+
+// Need at least 3 bars to detect any movement
+if (BarCount < 3)
+{
+    // Nothing to export
+    error("We need a least 3 bars in the trading range");
+}
+
+// Open CSV file if decided
+if (useExport)
+{
+	fh = fopen(csvPath, "w");
+
+	if (fh == 0)
+	{
+		// The file was not properly opened.
+		error("The export file was not properly opened");
+	}
+
+// Write header line
+fputs("start_idx;end_idx;sens;amplitude_pct;duree\n", fh);
+}
+
+// Convert threshold to factor
+p = seuil_pct / 100.0;
+fProfitLong = pctProfitLong / 100;
+fProfitShort = pctProfitShort / 100;
+fPullback = pullbackPct / 100;
+
+//Trading range variable initialization
+bir = status("barInRange");
+fbir = status("firstBarInRange");
+indexBarre = barIndex();
+
+//Trading variables initialization
+Buy = Sell = Short = Cover = 0;
+
+// debug variables id decided
+if (useDebug)
+{
+	debugPivotIdx = 0;
+	debugPivotPrice = 0;
+	debugRetracement = 0;
+	debugExtremePrice = 0;
+	debugDuree = 0;
+}
+
+//--------------------------------------------------------------
+// Main ZigZag loop
+//--------------------------------------------------------------
+
+for (i = 0; i < BarCount; i++)
+{
+	if ( bir[i] ) //We check that we are in the Range
+	{
+		price = Close[i]; // Close for branches set up
+		lowPrice = Low[i]; // Low for down trend take profit and up trend pullbacks if decided
+		highPrice = High[i]; // High for up trend take profit and down trend pullbacks if decided
+
+		if ( fbir[i] ) //If it's the first bar in range, we prepare variables
+		{
+			firstIndex = indexBarre[i];
+			pivotIdx     = 0;
+			pivotPrice   = price;
+			trend        = 0;    // 0 = unknown, +1 = up, -1 = down
+			extremeIdx   = 0;
+			extremePrice = pivotPrice;
+			inPosition = 0;
+
+			// debug variables if decided
+			if (useDebug)
+			{
+				debugPivotPrice = price;
+				debugExtremePrice = pivotPrice;
+			}
+    	}
+
+		//----------------------------------------------------------
+		// Initial trend detection
+		//----------------------------------------------------------
+
+		if (trend == 0)
+		{
+			if (price >= pivotPrice * (1 + p))
+			{
+				trend = 1;
+				extremeIdx = i - firstIndex;
+				extremePrice = price;
+                if (!useTrend OR mainTrend[i] == 1)
+                {
+					Buy[i] = 1;
+					inPosition = 1;
+                }
+                takeProfitPrice = price * (1 + fProfitLong) + volDif[i] * volLong;
+				
+				if (useDebug)
+				{
+					debugExtremePrice[i] = extremePrice;
+				}
+			}
+			else
+			if (price <= pivotPrice * (1 - p))
+			{
+				trend = -1;
+				extremeIdx = i - firstIndex;
+				extremePrice = price;
+				if (!useTrend OR mainTrend[i] == -1)
+				{
+					Short[i] = 1;
+					inPosition = 1;
+                }
+
+                takeProfitPrice = price * (1 - fProfitShort) - volDif[i] * volShort;
+                
+                if (useDebug)
+                {
+					debugExtremePrice[i] = extremePrice;
+				}
+			}
+			continue;
+		}
+
+		//----------------------------------------------------------
+		// Update extreme price and index
+		//----------------------------------------------------------
+
+		if (trend == 1 && price > extremePrice)
+		{
+			extremeIdx = i - firstIndex;
+			extremePrice = price;
+			
+			if (useDebug)
+			{
+				debugExtremePrice[i] = extremePrice;
+			}
+		}
+		else
+		if (trend == -1 && price < extremePrice)
+		{
+			extremeIdx = i - firstIndex;
+			extremePrice = price;
+			
+			if (useDebug)
+			{
+				debugExtremePrice[i] = extremePrice;
+			}
+		}
+
+		//----------------------------------------------------------
+		// UP trend
+		//----------------------------------------------------------
+
+        if (trend == 1)
+		{			
+			// Check if take profit is hit
+			if (useHighLowForTakeProfit) // We use High or Close as base according to the useHighLowForTakeProfit user param
+			{
+				comparePrice = highPrice;
+			}
+			else
+			{
+				comparePrice = price;
+			}
+
+            if (comparePrice >= takeProfitPrice AND inPosition == 1)
+            {
+                Sell[i] = 1;
+                inPosition = 0;
+            }
+            
+            // Check retracement to validate the branch
+            retr = (extremePrice - price) / extremePrice * 100.0;
+			
+			if (useDebug)
+			{
+				debugRetracement[i] = retr;
+			}
+			
+			if (retr >= seuil_pct)
+			{
+				amplitude_pct = (extremePrice / pivotPrice - 1.0) * 100.0;
+				duree         = extremeIdx - pivotIdx;
+
+                // Close the present trade?
+                if (extremePrice < takeProfitPrice AND inPosition == 1)
+                {
+                    Sell[i] = 1;
+                    inPosition = 0;
+                }
+				              
+                // Write movement if decided
+                if (useExport)
+                {
+					line =
+						NumToStr(pivotIdx, 1.0) + ";" +
+						NumToStr(extremeIdx, 1.0) + ";" +
+						"up;" +
+						NumToStr(amplitude_pct, 1.4) + ";" +
+						NumToStr(duree, 1.0) + "\n";
+
+					fputs(line, fh);
+				}
+				
+				// Update debug variable if decided
+				if (useDebug)
+				{
+					debugPivotPrice[i] = price;
+					debugPivotIdx[i] = pivotIdx;
+					debugDuree[i] = duree;
+					debugExtremePrice[i] = price;
+				}
+
+				// New pivot becomes former extreme
+				pivotIdx   = extremeIdx;
+				pivotPrice = extremePrice;
+
+				// Switch trend
+				trend        = -1;
+				extremeIdx   = i - firstIndex;
+				extremePrice = price;
+
+                // Open new trade if we don't use pullback
+                if (!usePullback
+					AND inPosition == 0
+					AND (!useTrend OR mainTrend[i] == -1))
+                {
+					Short[i] = 1;
+					inPosition = 1;
+					takeProfitPrice = price * (1 - fProfitShort) - volDif[i] * volShort;
+				}
+			}
+
+			// Open new trade if we use pullback and conditions are met
+			if (useHighLowForPullback) // We use High or Close according to the useHighLowForPullback user param
+			{
+				comparePrice = highPrice;
+			}
+			else
+			{
+				comparePrice = price;
+			}
+			
+			pullbackLevel = pivotPrice * (1 - p) * (1 + fPullback);
+			if (usePullback
+    			AND comparePrice > pullbackLevel // pullback on short branch is validated if price is more than pullback threshold
+   				AND inPosition == 0
+    			AND !useTrend OR mainTrend[i] == -1)
+			{		
+				Short[i] = 1;
+				inPosition = 1;
+				if (useHighLowForPullback)
+				{
+					takeProfitPrice = pullbackLevel * (1 - fProfitShort) - volDif[i] * volShort; // Take profit calculation based on pullback threshold
+				}
+				else
+				{
+					takeProfitPrice = comparePrice * (1 - fProfitShort) - volDif[i] * volShort; // Take profit calculation based on Close
+				}
+			}
+		}
+		//----------------------------------------------------------
+		// DOWN trend: check rebound to validate the branch
+		//----------------------------------------------------------
+		else
+		{
+			// Check if take profit is hit
+			if (useHighLowForTakeProfit) // We use High or Close according to the useHighLowForTakeProfit user param
+			{
+				comparePrice = lowPrice;
+			}
+			else
+			{
+				comparePrice = price;
+			}
+
+            if (comparePrice <= takeProfitPrice AND inPosition == 1)
+            {
+                Cover[i] = 1;
+                inPosition = 0;
+            }
+            
+            // Check retracement to validate the branch
+			reb = (price - extremePrice) / extremePrice * 100.0;
+			
+			if (useDebug)
+			{
+				debugRetracement[i] = reb;
+			}
+
+			if (reb >= seuil_pct)
+			{
+				amplitude_pct = (1.0 - (extremePrice / pivotPrice)) * 100.0;
+				duree         = extremeIdx - pivotIdx;
+				
+				// Close the present trade?
+				if (extremePrice > takeProfitPrice AND inPosition == 1)
+				{
+					Cover[i] = 1;
+					inPosition = 0;
+				}
+
+				// Write movement if decided
+				if (useExport)
+				{
+					line =
+						NumToStr(pivotIdx, 1.0) + ";" +
+						NumToStr(extremeIdx, 1.0) + ";" +
+						"down;" +
+						NumToStr(amplitude_pct, 1.4) + ";" +
+						NumToStr(duree, 1.0) + "\n";
+
+					fputs(line, fh);
+				}
+				
+				//Update debug variable if decided
+				if (useDebug)
+				{
+					debugPivotPrice[i] = price;
+					debugPivotIdx[i] = pivotIdx;
+					debugDuree[i] = duree;
+					debugExtremePrice[i] = price;
+				}
+				
+				// New pivot becomes former extreme
+				pivotIdx   = extremeIdx;
+				pivotPrice = extremePrice;
+
+				// Switch trend
+				trend        = 1;
+				extremeIdx   = i - firstIndex;
+				extremePrice = price;
+
+                // Open new trade if we don't use pullback
+                if (!usePullback
+					AND inPosition == 0
+					AND (!useTrend OR mainTrend[i] == 1))
+                {
+					Buy[i] = 1;
+					inPosition = 1;
+					takeProfitPrice = price * (1 + fProfitLong) + volDif[i] * volLong;
+				}
+			}
+
+			// Open new trade if we use pullback and conditions are met
+			if (useHighLowForPullback) // We use High or Close according to the useHighLowForPullback user param
+			{
+				comparePrice = lowPrice;
+			}
+			else
+			{
+				comparePrice = price;
+			}
+
+			pullbackLevel = pivotPrice * (1 + p) * (1 - fPullback);
+			if (usePullback
+				AND comparePrice < pullbackLevel // pullback on long branch is validated if price is less than pullback threshold
+				AND inPosition == 0
+				AND !useTrend OR mainTrend[i] == 1)
+			{		
+				Buy[i] = 1;
+				inPosition = 1;
+				if (useHighLowForPullback)
+				{
+					takeProfitPrice = pullbackLevel * (1 + fProfitLong) + volDif[i] * volLong; // Take profit calculation based on pullback threshold
+				}
+				else
+				{
+					takeProfitPrice = comparePrice * (1 + fProfitLong) + volDif[i] * volLong; // Take profit calculation based on Close
+				}
+			}
+		}
+	}
+}
+
+// Close file if decided
+if (useExport)
+{
+	fclose(fh);
+}
+
+// Explore columns display
+//Filter = 1;
+filter = Buy == 1 OR Short == 1 OR Sell == 1 OR Cover == 1;
+
+AddColumn(O, "O");
+AddColumn(H, "H");
+AddColumn(L, "L");
+AddColumn(C, "C");
+AddColumn(Buy, "Buy");
+AddColumn(Sell,"Sell");
+AddColumn(Short, "Short");
+AddColumn(Cover, "Cover");
+AddColumn(abs(H-L), "abs(h-l)");
+AddColumn(volExist, "volExist");
+AddColumn(volAverageLt, "volAverageLt");
+AddColumn(volAverageSt, "volAverageSt");
+AddColumn(penteEmaDay, "penteEmaDay");
+AddColumn(mainTrend, "mainTrend");
+// Display debug variables if decided
+//if (useDebug)
+//{
+	//AddColumn(debugPivotIdx, "DebugPivotIdx");
+	//AddColumn(debugPivotPrice, "DebugPivotPrice");
+	//AddColumn(debugRetracement, "DebugRetracement");
+	//AddColumn(debugExtremePrice, "DebugExtremePrice");
+	//AddColumn(debugDuree, "DebugDuree");
+//}
